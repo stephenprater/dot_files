@@ -1,24 +1,29 @@
-require 'irb/completion'
-require 'irb/ext/save-history'
-
+require 'rubygems'
 require 'wirble'
-require 'hirb'
-require 'bond'
-require 'what_methods'
-require 'interactive_editor'
+require 'irb/completion'
 
 Wirble.init
 Wirble.colorize
 
-IRB.conf[:SAVE_HISTORY] = 1000
-IRB.conf[:HISTORY_FILE] = "#{ENV['HOME']}/.irb_history"
-IRB.conf[:AUTO_IDENT] = true
-IRB.conf[:USE_READLINE] = true
-IRB.conf[:PROMPT_MODE] = :DEFAULT
-
-def pc x
-  x.each_with_index.inject("") { |memo,(e,i)| memo << "#{'%03d' % i}:#{e}\n"; memo}
+def ls
+  %x{ls}.split "\n"
 end
 
-$: << '.'
-$: << './lib'
+def reload(filename)
+  $".delete(filename+".rb")
+  require(filename)
+end
+
+def cls
+  $stdout << `clear`
+end
+
+def eod
+  $stdout << `tput ed`
+end
+
+$: << Dir.pwd
+$: << Dir.pwd.rstrip + '/lib'
+
+
+IRB.conf[:PROMPT_MODE] = :DEFAULT

@@ -27,3 +27,12 @@ $: << Dir.pwd.rstrip + '/lib'
 
 
 IRB.conf[:PROMPT_MODE] = :DEFAULT
+
+if ENV['RAILS_ENV']
+  IRB.conf[:IRB_RC] = Proc.new do
+    logger = Logger.new(STDOUT)
+    ActiveRecord::Base.logger = logger
+    ActiveResource::Base.logger = logger
+  end
+end
+

@@ -1,4 +1,3 @@
-g vim map c-=
 g vim map ctrl =
 g vim map C-=
 terminal ctrl-=
@@ -254,3 +253,4 @@ g monitor doesn't come back on after suspend linux
 g intel video card resume linux
 g ruby supress warnings
 g intel video card wake from suspend
+http://jqueryui.com/downloads

@@ -1,3 +1,22 @@
 [user]
-	name = Stephen Prater (@laptop)\n
-	email = me@stephenprater.com
+	name = Stephen Prater (@laptop)
+	email = stephenprater@collectivebias.com
+[branch]
+	autosetupmerge = true
+[core]
+	excludesfile = /Users/stephenprater/.gitignore_global
+	editor = mvim -f
+[difftool "sourcetree"]
+	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
+	path = 
+[mergetool "sourcetree"]
+	cmd = /Applications/SourceTree.app/Contents/Resources/opendiff-w.sh \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+	trustExitCode = true
+[push]
+	default = simple
+[merge]
+	tool = diffconflicts
+[mergetool "diffconflicts"]
+	cmd = diffconflicts mvim $BASE $LOCAL $REMOTE $MERGED
+	trustExitCode = true
+	keepBackup = false

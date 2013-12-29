@@ -1,11 +1,11 @@
 [user]
-	name = Stephen Prater (@laptop)
-	email = stephenprater@collectivebias.com
+	name = Stephen Prater
+	email = me@stephenprater.com
 [branch]
 	autosetupmerge = true
 [core]
-	excludesfile = /Users/stephenprater/.gitignore_global
-	editor = mvim -f
+	excludesfile = /Users/prater/.gitignore_global
+	editor = vim -f
 [difftool "sourcetree"]
 	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
 	path = 
@@ -20,3 +20,5 @@
 	cmd = diffconflicts mvim $BASE $LOCAL $REMOTE $MERGED
 	trustExitCode = true
 	keepBackup = false
+[color]
+	ui = auto

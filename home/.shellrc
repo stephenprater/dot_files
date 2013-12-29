@@ -1,0 +1,235 @@
+# ~/.shellrc
+# vim:set ft=sh sw=2 sts=2:
+
+[ -e "$DEFAULT_ORGANIZATION" ] || DEFAULT_ORGANIZATION="acumenbrands"
+export DEFAULT_ORGANIZATION
+[ -e "$SOURCE_DIR" ] || SOURCE_DIR="$HOME/src/$DEFAULT_ORGANIZATION"
+export SOURCE_DIR
+
+for dir in /usr/local/bin "$HOME/bin" .git/safe/../../bin .git/bin; do
+  case "$PATH:" in
+    *:"$dir":*) PATH="`echo "$PATH"|sed -e "s#:$dir##"`" ;;
+  esac
+  case "$dir" in
+    /*) [ ! -d "$dir" ] || PATH="$dir:$PATH" ;;
+    *) PATH="$dir:$PATH" ;;
+  esac
+done
+for dir in /usr/local/sbin /opt/local/sbin /usr/X11/bin; do
+  case ":$PATH:" in
+    *:"$dir":*) ;;
+    *) [ ! -d "$dir" ] || PATH="$PATH:$dir" ;;
+  esac
+done
+
+scd() {
+  cd "$SOURCE_DIR/$1"
+  if [ -e .git/safe -a ! -L .git/bin ]; then
+    ln -s ../bin .git
+  fi
+}
+
+mux() {
+  local name cols
+  if [ -n "$1" ]; then
+    scd $1
+  fi
+  name="$(basename $PWD | sed -e 's/\./-/g')"
+  cols="$(tput cols)"
+  if ! $(tmux has-session -t $name &>/dev/null); then
+    tmux new-session -d -n code -s $name -x${cols-150} -y50 && \
+      tmux new-window -a -d -n tests -t $name:0 \; \
+      new-window -a -d -n server -t $name:1 \; \
+      select-layout -t $name main-vertical &>/dev/null \; \
+        send-keys -t $name:0 'vim .' C-m
+  fi
+  tmux attach-session -t $name
+}
+
+git() {
+  [ -f "$HOME/.hitch_export_authors" ] && . "$HOME/.hitch_export_authors"
+  if command -v hub >/dev/null; then
+    command hub "$@"
+  else
+    command git "$@"
+  fi
+}
+
+sclone() {
+  local url basename example new
+  if [ x-f = "x$1" ]; then
+    shift
+    rm -rf "$SOURCE_DIR/`basename $1 .git`"
+  fi
+  basename="`basename $1 .git`"
+  if [ ! -d "$SOURCE_DIR/$basename" ]; then
+    new=1
+    case "$1" in
+      *:*) url="$1" ;;
+      */*) url="git@github.com:$1.git" ;;
+      *)   url="git@github.com:$DEFAULT_ORGANIZATION/$1.git" ;;
+    esac
+    git clone "$url" "$SOURCE_DIR/$basename" || return 1
+    for example in "$SOURCE_DIR/$basename"/config/*.example.yml; do
+      cp "$example" "${example%.example.yml}.yml"
+    done 2>/dev/null
+    if [ -f "$SOURCE_DIR/$basename/.rvmrc" ] && command -v __rvm_trust_rvmrc >/dev/null; then
+      __rvm_trust_rvmrc "$SOURCE_DIR/$basename/.rvmrc"
+    fi
+  fi
+  scd "$basename"
+  ln -sf ../bin .git
+  if [ ! -f .git/hooks/post-rewrite ]; then
+    cat > .git/hooks/post-rewrite <<EOS
+#!/bin/sh
+
+GIT_DIR="\$(dirname "\$(dirname "\$0")")"
+export GIT_DIR
+
+case "\$1" in
+  rebase) exec "\$GIT_DIR/hooks/post-merge" 0 rebase ;;
+esac
+EOS
+  fi
+  if [ ! -f .git/hooks/pre-commit ]; then
+    echo '#!/bin/sh' > .git/hooks/pre-commit
+    echo 'git diff --exit-code --cached -- Gemfile Gemfile.lock >/dev/null || bundle check' >> .git/hooks/pre-commit
+  fi
+  if [ ! -f .git/hooks/ctags ]; then
+    echo '#!/bin/sh' > .git/hooks/ctags
+    echo 'rm -f .git/tags' >> .git/hooks/ctags
+    echo 'ctags --tag-relative -f .git/tags --exclude=.git --exclude=db --exclude=public/uploads --exclude=vendor --exclude=tmp --languages=-javascript,html,sql -R' >> .git/hooks/ctags
+    chmod +x .git/hooks/ctags
+    for basename in post-checkout post-commit post-merge; do
+      echo '#!/bin/sh' > .git/hooks/$basename
+      echo '$GIT_DIR/hooks/ctags >/dev/null 2>&1 &' >> .git/hooks/$basename
+      chmod +x .git/hooks/$basename
+    done
+    .git/hooks/ctags
+  fi
+  echo 'if command -v hookup >/dev/null; then' >> .git/hooks/post-checkout
+  echo '  hookup post-checkout "$@"' >> .git/hooks/post-checkout
+  echo "fi" >> .git/hooks/post-checkout
+  if [ -n "$new" -a -x script/setup ]; then
+    script/setup
+  fi
+}
+
+# Tab completion
+if [ -n "$BASH_VERSION" ]; then
+  _scd()
+  {
+    local cur projects
+
+    [ -r "$SOURCE_DIR" ] || return 0
+
+    eval 'COMPREPLY=()'
+    cur=${COMP_WORDS[COMP_CWORD]}
+    projects=$(\ls "$SOURCE_DIR")
+
+    if [ $COMP_CWORD -eq 1 ]; then
+      eval 'COMPREPLY=( $(compgen -o filenames -W "$projects" $cur) )'
+    fi
+
+    return 0
+  }
+  complete -F _scd scd sclone mux
+elif [ -n "$ZSH_VERSION" ]; then
+  compctl -/ -S '' -W "$SOURCE_DIR" scd sclone mux
+fi
+
+alias sc='rails console'
+alias ss='rails server'
+alias sdbc='rails dbconsole -p'
+
+# Before pushing, ensure all your commits since origin are atomic:
+#
+# $ atomically rake
+atomically () {
+  $SOURCE_DIR/dotmatrix/bin/atomically $@
+}
+
+# Show git commit authorship totals. Options are forwarded to git log
+#
+# Usage:
+# $ contributions                    # for entire repo history
+# $ contributions -n30               # authorship for last 30 commits
+# $ contributions --since="last week"
+contributions () {
+  prog='BEGIN{ FS=",? and |, "; OFS=""}
+  END{ for(name in count) print count[name],"|",name; print NR,"|TOTAL"}
+  { for(i=1; i<=NF; i++) { count[$i]++; } }'
+
+  git log --format="%an" $@ | awk $prog | sort -nr | column -t -s '|'
+}
+
+# git_prompt_info accepts 0 or 1 arguments (i.e., format string)
+# returns text to add to bash PS1 prompt (includes branch name)
+git_prompt_info () {
+  local g="$(git rev-parse --git-dir 2>/dev/null)"
+  if [ -n "$g" ]; then
+    local r
+    local b
+    local d
+    local s
+    # Rebasing
+    if [ -d "$g/rebase-apply" ] ; then
+      if test -f "$g/rebase-apply/rebasing" ; then
+        r="|REBASE"
+      fi
+      b="$(git symbolic-ref HEAD 2>/dev/null)"
+    # Interactive rebase
+    elif [ -f "$g/rebase-merge/interactive" ] ; then
+      r="|REBASE-i"
+      b="$(cat "$g/rebase-merge/head-name")"
+    # Merging
+    elif [ -f "$g/MERGE_HEAD" ] ; then
+      r="|MERGING"
+      b="$(git symbolic-ref HEAD 2>/dev/null)"
+    else
+      if [ -f "$g/BISECT_LOG" ] ; then
+        r="|BISECTING"
+      fi
+      if ! b="$(git symbolic-ref HEAD 2>/dev/null)" ; then
+        if ! b="$(git describe --exact-match HEAD 2>/dev/null)" ; then
+          b="$(cut -c1-7 "$g/HEAD")..."
+        fi
+      fi
+    fi
+
+    # Dirty Branch
+    local newfile='?? '
+    if [ -n "$ZSH_VERSION" ]; then
+      newfile='\?\? '
+    fi
+    d=''
+    s=$(git status --porcelain 2> /dev/null)
+    [[ $s =~ "$newfile" ]] && d+='+'
+    [[ $s =~ "M " ]] && d+='*'
+    [[ $s =~ "D " ]] && d+='-'
+
+    printf "${1-"(%s) "}" "${b##refs/heads/}$r$d"
+  fi
+}
+
+alias gap='git add -p'
+alias gnap='git add -N . && git add -p'
+alias gb='git branch'
+alias gc='git commit -v'
+alias gca='git commit -a -v'
+alias gd='git diff'
+alias gdc='git diff --cached'
+alias gdh='git diff HEAD'
+alias gl='git pull'
+alias gln="git ln | perl -ple 's/\*/sprintf(\"%2s\", \$n++)/e' | less"
+alias glod='git log --oneline --decorate'
+alias gpr='git pull --rebase'
+alias gr='git rebase'
+alias gra='git rebase --abort'
+alias grc='git rebase --continue'
+alias gst='git status'
+alias vi='vim'
+
+# FIXME: Remove these two aliases after 3/26/2013
+alias aclone="echo 'DEPRECATED, please use: sclone'"
+alias acd="echo 'DEPRECATED, please use: scd'"
